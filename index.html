@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Takeaways Near Schools</title>
+  <meta name="description" content="See hot-food takeaways within a set distance of schools in any council in England, and check whether a site falls inside a school exclusion zone. Uses Food Standards Agency and Department for Education open data.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22"><circle cx="16" cy="16" r="11" fill="none" stroke="#93c5fd" stroke-width="2" stroke-dasharray="4 3"/><path d="M10 15l6-4 6 4v7H10z" fill="#e2e8f0"/><circle cx="25" cy="24" r="4" fill="#eb6834"/></svg>
+      </span>
+      <div>
+        <h1>Takeaways Near Schools</h1>
+        <p>Hot-food takeaway exclusion zones around schools, for any council in England &middot; <span class="credit">by @ET</span></p>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel" aria-label="Controls and results">
+      <form id="find" class="block" autocomplete="off">
+        <label for="place">Council area</label>
+        <div class="row">
+          <input id="place" type="search" placeholder="Postcode or place, e.g. KT1 1EU or Leeds" required>
+          <button class="btn btn-primary" type="submit">Load</button>
+        </div>
+        <p class="hint">Loads the schools and takeaways for the council covering that place.</p>
+        <div id="status" class="status" aria-live="polite"></div>
+      </form>
+
+      <section class="block" id="settings" hidden>
+        <h2 id="council-name"></h2>
+        <div class="grid2">
+          <label>Zone around each school
+            <select id="metres">
+              <option value="200">200 m</option>
+              <option value="250">250 m</option>
+              <option value="300">300 m</option>
+              <option value="400" selected>400 m</option>
+              <option value="500">500 m</option>
+              <option value="800">800 m</option>
+            </select>
+          </label>
+          <div>
+            <span class="lbl">Schools included</span>
+            <div id="phases" class="phases"></div>
+          </div>
+        </div>
+        <div id="nodata" class="note warn" hidden></div>
+        <div class="tiles" id="tiles"></div>
+        <div class="row">
+          <button class="btn btn-small" id="dl" type="button">Download takeaways CSV</button>
+        </div>
+      </section>
+
+      <section class="block" id="site-block" hidden>
+        <h2>Check a site</h2>
+        <p class="hint">Enter an address or postcode, or click anywhere on the map.</p>
+        <form id="site" class="row" autocomplete="off">
+          <input id="site-q" type="search" placeholder="e.g. 12 Clarence Street, Kingston">
+          <button class="btn" type="submit">Check</button>
+        </form>
+        <div id="site-result"></div>
+      </section>
+
+      <section class="block" id="schools-block" hidden>
+        <h2>Schools with the most takeaways nearby</h2>
+        <ol class="schools" id="schools"></ol>
+      </section>
+
+      <section class="block about">
+        <h2>About</h2>
+        <ul>
+          <li>Many councils refuse new hot-food takeaways within a set distance of schools, often 400 m. The London Plan asks boroughs to consider this within 400 m walking distance of primary and secondary schools. Check your council's local plan for its exact rule.</li>
+          <li>Distances here are straight-line. Walking distance is usually longer, so this shows the widest possible zone.</li>
+          <li><strong>Schools</strong>: open schools from the Department for Education's register, via planning.data.gov.uk. Phase (primary, secondary…) is worked out from the school type and name, so some are marked "phase unclear". Schools just over the council boundary aren't included.</li>
+          <li><strong>Takeaways</strong>: Food Standards Agency food hygiene data, business type "Takeaway/sandwich shop". That includes sandwich shops and some cafés, and isn't the same as the planning use class for hot-food takeaways.</li>
+        </ul>
+        <p class="muted small">Contains public sector information licensed under the Open Government Licence v3.0: Food Standards Agency food hygiene rating data; Department for Education Get Information about Schools, via planning.data.gov.uk. Basemap &copy; Esri.</p>
+        <p><strong>Created by @ET.</strong></p>
+      </section>
+    </section>
+
+    <section class="map-wrap" aria-label="Map">
+      <div id="map"></div>
+      <div class="legend" id="legend" hidden>
+        <span><i class="k k-school">P</i>School (letter = phase)</span>
+        <span><i class="k k-zone"></i>Zone</span>
+        <span><i class="k k-in"></i>Takeaway in a zone</span>
+        <span><i class="k k-out"></i>Takeaway outside</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/zones.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
