@@ -86,7 +86,30 @@ function schoolsFrom(entities, today) {
 function takeawaysFrom(file) {
   const f = file.fields;
   return (file.rows || []).map((r) => Object.fromEntries(f.map((k, i) => [k, r[i]])))
-    .map((t) => ({ ...t, lat: Number(t.lat), lon: Number(t.lon) }));
+    .map((t) => ({ ...t, kind: t.kind || 't', lat: Number(t.lat), lon: Number(t.lon) }));
+}
+
+/** Bounding box [west, south, east, north] of points, grown by `metres`. */
+function boxAround(points, metres = 0) {
+  if (!points.length) return null;
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const p of points) { w = Math.min(w, p.lon); e = Math.max(e, p.lon); s = Math.min(s, p.lat); n = Math.max(n, p.lat); }
+  const dLat = metres / 111000, dLon = metres / (111000 * Math.cos(((s + n) / 2) * Math.PI / 180));
+  return [w - dLon, s - dLat, e + dLon, n + dLat];
+}
+const overlaps = (a, b) => a && b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+const insideBox = (p, b) => p.lon >= b[0] && p.lon <= b[2] && p.lat >= b[1] && p.lat <= b[3];
+
+/**
+ * Which FSA files to load: the council's own (matched by name) plus any
+ * neighbour whose takeaways reach into `box`, so takeaways just over the
+ * border from a school still count. Works even if the name match fails.
+ */
+function pickAuthorities(index, councilName, box, max = 8) {
+  const home = matchAuthority(councilName, index);
+  const auths = (index && index.authorities) || [];
+  const near = box ? auths.filter((a) => a !== home && overlaps(a.bbox, box)) : [];
+  return { home, neighbours: near.slice(0, max), hasBoxes: auths.some((a) => a.bbox) };
 }
 
 /**
@@ -155,10 +178,10 @@ function matchAuthority(ladName, index) {
   return (norm.find((x) => x.n === key) || norm.find((x) => x.n.startsWith(key) || key.startsWith(x.n)) || {}).a || null;
 }
 
-const CSV_FIELDS = ['name', 'address', 'postcode', 'rating', 'lat', 'lon', 'in_zone', 'nearest_school', 'nearest_school_phase', 'distance_m', 'schools_within'];
+const CSV_FIELDS = ['name', 'address', 'postcode', 'council', 'fsa_type', 'rating', 'lat', 'lon', 'in_zone', 'nearest_school', 'nearest_school_phase', 'distance_m', 'schools_within'];
 function csvRows(result) {
   return [CSV_FIELDS, ...result.takeaways.map((t) => [
-    t.name, t.address, t.postcode, t.rating, t.lat, t.lon, t.inZone ? 'Y' : 'N',
+    t.name, t.address, t.postcode, t.council || '', t.kind === 'r' ? 'Restaurant/Cafe/Canteen (hot-food name)' : 'Takeaway/sandwich shop', t.rating, t.lat, t.lon, t.inZone ? 'Y' : 'N',
     t.nearest ? t.nearest.name : '', t.nearest ? PHASES[t.nearest.phase].label : '',
     t.distance == null ? '' : Math.round(t.distance), t.schoolsWithin,
   ])];
@@ -166,6 +189,6 @@ function csvRows(result) {
 
 globalThis.TNSZones = {
   COLORS, PHASES, phaseOf, isOpen, parsePoint, distance, schoolsFrom, takeawaysFrom, analyse, siteCheck,
-  normaliseName, matchAuthority, csvRows,
+  normaliseName, matchAuthority, csvRows, boxAround, insideBox, pickAuthorities,
 };
 })();

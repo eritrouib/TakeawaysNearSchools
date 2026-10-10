@@ -16,7 +16,7 @@ You choose which schools count (primary, secondary, special, nursery, sixth form
 | What | Source |
 |---|---|
 | Schools | Department for Education *Get Information about Schools*, via [planning.data.gov.uk](https://www.planning.data.gov.uk) (dataset `educational-establishment`), loaded live |
-| Takeaways | Food Standards Agency [food hygiene rating open data](https://ratings.food.gov.uk/open-data), business type "Takeaway/sandwich shop" (7844), rebuilt weekly |
+| Takeaways | Food Standards Agency [food hygiene rating open data](https://ratings.food.gov.uk/open-data), businesses registered as "Takeaway/sandwich shop" (7844), plus "Restaurant/Cafe/Canteen" (1) whose names suggest hot food (chicken, kebab, pizza, fish & chips…), rebuilt weekly |
 | Council boundaries | planning.data.gov.uk |
 
 `scripts/build_takeaways.py` (Python 3, no extra packages) downloads each English authority's daily FSA file and keeps takeaways with a location. A GitHub Action (`.github/workflows/update.yml`) runs it every Tuesday.
@@ -34,7 +34,7 @@ Until then, schools, zones and site checks work; takeaway counts appear once the
 - **Straight-line distances.** Policies often use walking distance, which is longer, so this shows the widest possible zone.
 - **School phase is inferred.** The national school records on Planning Data don't include phase, so it's worked out from the school type and name. Schools it can't classify are shown as "phase unclear" (included by default). Colleges and universities are left out.
 - **Schools just across the council boundary** aren't included, even though their zones can reach into the council.
-- **"Takeaway/sandwich shop"** in food hygiene data isn't the same as the planning use class for hot-food takeaways: it includes sandwich shops and some cafés, and some hot-food takeaways are registered under other types.
+- **"Takeaway/sandwich shop"** in food hygiene data isn't the same as the planning use class for hot-food takeaways: it includes sandwich shops and some cafés. Many hot-food takeaways are registered as restaurants, so the page also counts restaurants and cafés with takeaway-style names (you can switch this off). That name test will miss some and catch the odd sit-down pizza restaurant. Takeaways in neighbouring councils are included when they're close to a school.
 - Check your council's local plan for its actual policy (distance, which schools, walking or straight line).
 
 ## Development

@@ -51,7 +51,9 @@
             <div id="phases" class="phases"></div>
           </div>
         </div>
+        <label class="check" id="kinds-row" hidden><input type="checkbox" id="kinds" checked> Also count restaurants and cafés whose names suggest hot food (chicken, kebab, pizza, fish &amp; chips…) <span class="n" id="kinds-n"></span></label>
         <div id="nodata" class="note warn" hidden></div>
+        <p class="hint" id="source"></p>
         <div class="tiles" id="tiles"></div>
         <div class="row">
           <button class="btn btn-small" id="dl" type="button">Download takeaways CSV</button>
@@ -79,7 +81,7 @@
           <li>Many councils refuse new hot-food takeaways within a set distance of schools, often 400 m. The London Plan asks boroughs to consider this within 400 m walking distance of primary and secondary schools. Check your council's local plan for its exact rule.</li>
           <li>Distances here are straight-line. Walking distance is usually longer, so this shows the widest possible zone.</li>
           <li><strong>Schools</strong>: open schools from the Department for Education's register, via planning.data.gov.uk. Phase (primary, secondary…) is worked out from the school type and name, so some are marked "phase unclear". Schools just over the council boundary aren't included.</li>
-          <li><strong>Takeaways</strong>: Food Standards Agency food hygiene data, business type "Takeaway/sandwich shop". That includes sandwich shops and some cafés, and isn't the same as the planning use class for hot-food takeaways.</li>
+          <li><strong>Takeaways</strong>: Food Standards Agency food hygiene data, businesses registered as "Takeaway/sandwich shop", plus restaurants and cafés whose names suggest hot food to take away (many chicken, kebab and pizza shops are registered that way). This includes sandwich shops and isn't the same as the planning use class for hot-food takeaways. Takeaways just over the council boundary are included when they're near a school.</li>
         </ul>
         <p class="muted small">Contains public sector information licensed under the Open Government Licence v3.0: Food Standards Agency food hygiene rating data; Department for Education Get Information about Schools, via planning.data.gov.uk. Basemap &copy; Esri.</p>
         <p><strong>Created by @ET.</strong></p>

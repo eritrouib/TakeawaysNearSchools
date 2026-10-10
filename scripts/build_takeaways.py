@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Download the Food Standards Agency's open food hygiene data for every local
-authority in England and keep only takeaways ("Takeaway/sandwich shop",
-BusinessTypeID 7844) that have a location.
+authority in England and keep the takeaways that have a location:
+
+  - everything registered as "Takeaway/sandwich shop" (BusinessTypeID 7844), and
+  - places registered as "Restaurant/Cafe/Canteen" (BusinessTypeID 1) whose name
+    looks like a hot-food takeaway (chicken, kebab, pizza, fish & chips, ...).
+    Many takeaways are registered that way, so leaving them out undercounts badly.
 
 Run from the repository folder (Python 3.8+, no extra packages):
 
@@ -18,6 +22,7 @@ Runs weekly on GitHub (.github/workflows/update.yml).
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -28,6 +33,15 @@ from pathlib import Path
 
 AUTHORITIES_URL = os.environ.get("FSA_AUTHORITIES_URL", "https://api1-ratings.food.gov.uk/authorities/xml")
 TAKEAWAY_TYPE_ID = "7844"
+RESTAURANT_TYPE_ID = "1"
+# Names that suggest hot food to take away. Matched case-insensitively against
+# the business name of places registered as restaurants/cafes.
+HOT_FOOD = re.compile(
+    r"take ?-?away|chicken|wings|kebab|doner|shawarma|pizz|burger|fish (and|&|n) chip|chips\b|chippy|fryer|fried|"
+    r"peri[- ]?peri|jerk|"
+    r"kfc|mcdonald|burger king|domino|papa john|five guys|wimpy|perfect fried|morley|chicken cottage|dixy|sam'?s chicken",
+    re.I,
+)
 NOT_ENGLAND = {"Wales", "Scotland", "Northern Ireland"}
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "takeaways"
@@ -70,6 +84,15 @@ def parse_authorities(xml_bytes):
     return out
 
 
+def kind_of(type_id, name):
+    """'t' = registered as a takeaway, 'r' = restaurant/cafe with a takeaway-like name, None = skip."""
+    if type_id == TAKEAWAY_TYPE_ID:
+        return "t"
+    if type_id == RESTAURANT_TYPE_ID and HOT_FOOD.search(name or ""):
+        return "r"
+    return None
+
+
 def parse_takeaways(xml_bytes):
     """Takeaways with a location from one FHRS open data file."""
     root = ET.fromstring(xml_bytes)
@@ -78,7 +101,10 @@ def parse_takeaways(xml_bytes):
         name = local(el.tag)
         if name == "ExtractDate" and not extract:
             extract = (el.text or "").strip()
-        if name != "EstablishmentDetail" or text(el, "BusinessTypeID") != TAKEAWAY_TYPE_ID:
+        if name != "EstablishmentDetail":
+            continue
+        kind = kind_of(text(el, "BusinessTypeID"), text(el, "BusinessName"))
+        if not kind:
             continue
         lat = lon = None
         for child in el:
@@ -91,20 +117,34 @@ def parse_takeaways(xml_bytes):
         address = ", ".join(x for x in (text(el, f"AddressLine{i}") for i in range(1, 5)) if x)
         rows.append([
             int(text(el, "FHRSID") or 0), text(el, "BusinessName"), address, text(el, "PostCode"),
-            lat, lon, text(el, "RatingValue"), text(el, "RatingDate")[:10],
+            lat, lon, text(el, "RatingValue"), text(el, "RatingDate")[:10], kind,
         ])
     rows.sort(key=lambda r: r[1].lower())
     return rows, extract
+
+
+def bbox(rows):
+    """[west, south, east, north] ignoring the odd badly geocoded outlier (1st-99th percentile)."""
+    if not rows:
+        return None
+    lats = sorted(r[4] for r in rows)
+    lons = sorted(r[5] for r in rows)
+    if len(rows) > 50:
+        lo, hi = int(len(rows) * 0.01), int(len(rows) * 0.99) - 1
+    else:
+        lo, hi = 0, len(rows) - 1
+    return [lons[lo], lats[lo], lons[hi], lats[hi]]
 
 
 def build(authority):
     rows, extract = parse_takeaways(fetch(authority["FileName"]))
     code = authority["LocalAuthorityIdCode"]
     payload = {"code": code, "name": authority["Name"], "extract": extract,
-               "fields": ["fhrsid", "name", "address", "postcode", "lat", "lon", "rating", "rating_date"], "rows": rows}
+               "fields": ["fhrsid", "name", "address", "postcode", "lat", "lon", "rating", "rating_date", "kind"], "rows": rows}
     (OUT / f"{code}.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return {"code": code, "name": authority["Name"], "slug": authority["FriendlyName"], "region": authority["RegionName"],
-            "count": len(rows), "extract": extract}
+            "count": len(rows), "registered_takeaways": sum(r[8] == "t" for r in rows),
+            "bbox": bbox(rows), "extract": extract}
 
 
 def main():
@@ -145,7 +185,8 @@ def main():
 
     merged = {**previous, **{r["code"]: r for r in results}}
     index = {"generated": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-             "business_type": "Takeaway/sandwich shop (FSA BusinessTypeID 7844)",
+             "version": 2,
+             "business_type": "Takeaway/sandwich shop (FSA 7844), plus Restaurant/Cafe/Canteen (FSA 1) with takeaway-like names",
              "authorities": sorted(merged.values(), key=lambda a: a["name"])}
     index_path.write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     total = sum(a["count"] for a in index["authorities"])

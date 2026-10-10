@@ -12,6 +12,7 @@ const state = {
   council: null, // {entity, name}
   schools: [],
   takeaways: [],
+  allTakeaways: [],
   takeawayFile: null,
   phases: new Set(Object.entries(Z.PHASES).filter(([, p]) => p.default).map(([k]) => k)),
   result: null,
@@ -90,22 +91,46 @@ async function loadCouncil(council) {
   state.schools = Z.schoolsFrom(schools);
 
   status('Loading takeaways…', true);
-  state.takeaways = [];
+  state.allTakeaways = [];
   state.takeawayFile = null;
   let note = '';
   try {
     const index = await getJson('data/takeaways/index.json');
-    const auth = Z.matchAuthority(council.name, index);
-    if (!auth) {
-      note = `No Food Standards Agency takeaway file matched "${council.name}".`;
+    // Everything within 1 km of a school in the council (covers the largest zone).
+    const box = Z.boxAround(state.schools, 1000);
+    const pick = Z.pickAuthorities(index, council.name, box);
+    const files = [pick.home, ...pick.neighbours].filter(Boolean);
+    if (!files.length) {
+      note = `No Food Standards Agency file matched "${council.name}".`;
     } else {
-      const file = await getJson(`data/takeaways/${encodeURIComponent(auth.code)}.json`);
-      state.takeaways = Z.takeawaysFrom(file);
-      state.takeawayFile = { ...auth, extract: file.extract, generated: index.generated };
+      const loaded = await Promise.all(files.map((a) => getJson(`data/takeaways/${encodeURIComponent(a.code)}.json`)
+        .then((f) => ({ a, f })).catch(() => null)));
+      const seen = new Set();
+      for (const x of loaded.filter(Boolean)) {
+        const home = x.a === pick.home;
+        for (const t of Z.takeawaysFrom(x.f)) {
+          if (seen.has(t.fhrsid) || (box && !Z.insideBox(t, box))) continue;
+          seen.add(t.fhrsid);
+          state.allTakeaways.push({ ...t, home, council: x.a.name });
+        }
+      }
+      const homeFile = loaded.find((x) => x && x.a === pick.home);
+      state.takeawayFile = {
+        name: pick.home ? pick.home.name : null,
+        neighbours: loaded.filter((x) => x && x.a !== pick.home).map((x) => x.a.name),
+        extract: (homeFile || loaded.find(Boolean)).f.extract,
+        generated: index.generated,
+        hasKinds: index.version >= 2,
+      };
+      if (!pick.home) note = `No Food Standards Agency file matched "${council.name}" by name, so takeaways come from the councils whose data covers this area.`;
+      if (!index.version) note = 'This takeaway data was built with an older version of the script and only includes businesses registered as "Takeaway/sandwich shop". Re-run the "Update takeaways" GitHub Action to also count restaurants that sell hot food to take away.';
     }
   } catch (e) {
-    note = 'Takeaway data hasn\'t been built yet. Run the "Update takeaways" GitHub Action (or python scripts/build_takeaways.py). Schools, zones and site checks still work.';
+    note = location.protocol === 'file:'
+      ? 'Takeaways can\'t load when the page is opened straight from your computer. Open the GitHub Pages address instead (or run: python -m http.server, then open http://localhost:8000).'
+      : 'Takeaway data hasn\'t been built yet. Run the "Update takeaways" GitHub Action (Actions tab → Update takeaways → Run workflow), wait for it to finish, then reload. Schools, zones and site checks still work.';
   }
+  applyKinds();
   $('#dl').disabled = !state.takeawayFile;
   $('#nodata').hidden = !note;
   $('#nodata').textContent = note;
@@ -132,6 +157,21 @@ function drawPhases() {
   }));
 }
 $('#metres').addEventListener('change', () => update());
+$('#kinds').addEventListener('change', () => { applyKinds(); update(); });
+
+function applyKinds() {
+  const wide = $('#kinds').checked;
+  state.takeaways = state.allTakeaways.filter((t) => wide || t.kind === 't');
+  const tf = state.takeawayFile;
+  const nT = state.allTakeaways.filter((t) => t.kind === 't').length;
+  const nR = state.allTakeaways.length - nT;
+  $('#kinds-row').hidden = !(tf && tf.hasKinds);
+  $('#kinds-n').textContent = tf && tf.hasKinds ? `(${fmt(nR)})` : '';
+  $('#source').innerHTML = tf
+    ? `Loaded <strong>${fmt(state.takeaways.length)}</strong> takeaways in and around ${esc(state.council.name)}`
+      + ` from Food Standards Agency data for ${esc(tf.name || 'nearby councils')}${tf.neighbours.length ? ` and ${tf.neighbours.length} neighbouring council${tf.neighbours.length === 1 ? '' : 's'}` : ''}, dated ${esc(tf.extract || '–')}.`
+    : '';
+}
 
 function metres() { return Number($('#metres').value); }
 
@@ -155,6 +195,8 @@ function draw(fit) {
     renderer, radius: t.inZone ? 5 : 4, color: '#fff', weight: 1, fillColor: t.inZone ? Z.COLORS.inZone : Z.COLORS.outside, fillOpacity: 1,
   }).bindPopup(`<strong>${esc(t.name)}</strong><br>${esc(t.address)} ${esc(t.postcode || '')}`
     + `<br>Food hygiene rating: ${esc(t.rating || '–')}`
+    + (t.kind === 'r' ? '<br><span class="muted">Registered as a restaurant/café; name suggests hot food</span>' : '')
+    + (t.home ? '' : `<br><span class="muted">${esc(t.council)}</span>`)
     + (t.nearest ? `<br>${Math.round(t.distance)} m from ${esc(t.nearest.name)}${t.inZone ? ' <strong>(in a zone)</strong>' : ''}` : '')))).addTo(map);
   state.layers.schools = L.layerGroup(state.schools.map((s) => L.marker([s.lat, s.lon], {
     icon: L.divIcon({ className: `school-icon${included.has(s.id) ? '' : ' off'}`, html: esc(Z.PHASES[s.phase].letter), iconSize: [18, 18] }),
@@ -168,9 +210,9 @@ function draw(fit) {
 
 function schoolPopup(s) {
   const r = state.result && state.result.schools.find((x) => x.id === s.id);
-  const n = r ? r.takeawaysWithin.length : null;
+  const n = r && state.takeawayFile ? r.takeawaysWithin.length : null;
   return `<strong>${esc(s.name)}</strong><br>${esc(Z.PHASES[s.phase].label)}${s.phase === 'unknown' ? ' (couldn\'t tell from the type or name)' : ''}`
-    + `${n != null ? `<br>${n} takeaway${n === 1 ? '' : 's'} within ${metres()} m` : '<br>Not included in the zones'}`
+    + (!r ? '<br>Not included in the zones' : n != null ? `<br>${n} takeaway${n === 1 ? '' : 's'} within ${metres()} m` : '<br>Takeaway data not loaded')
     + `<br><a href="https://get-information-schools.service.gov.uk/Establishments/Establishment/Details/${encodeURIComponent(s.urn)}" target="_blank" rel="noopener">DfE record</a>`;
 }
 

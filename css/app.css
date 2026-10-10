@@ -90,3 +90,5 @@ input[type="search"], select { font: inherit; font-size: 0.9rem; padding: 8px 10
   .panel { border-right: 0; overflow: visible; }
 }
 .btn[disabled] { opacity: 0.5; cursor: default; }
+.check { font-weight: 400; font-size: 0.84rem; display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 8px; }
+.check .n { color: var(--muted); }
